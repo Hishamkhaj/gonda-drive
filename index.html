@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<title>Gonda Drive</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f172a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gonda Drive">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<style>
+:root{--bg:#0f172a;--fg:#fff}
+@media (prefers-color-scheme: dark){:root{--bg:#0f172a;--fg:#fff}}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{display:block;width:100%;height:100%}
+#hud{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;font-weight:700;text-shadow:0 1px 4px #000}
+#hud small{display:block;font-weight:400;opacity:.8}
+#speed{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);right:14px;font-size:28px;font-weight:800;text-shadow:0 1px 4px #000}
+.btn{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);width:76px;height:76px;border-radius:50%;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff}
+.btn.on{background:rgba(255,255,255,.5)}
+#l{left:16px}#r{left:106px}#g{right:16px;background:rgba(34,197,94,.35)}#b{right:106px;background:rgba(239,68,68,.35)}
+#fs{position:fixed;top:calc(env(safe-area-inset-top,0px) + 52px);right:14px;padding:6px 12px;border-radius:14px;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.5);color:#fff;font-size:14px}
+#rot{display:none;position:fixed;inset:0;z-index:99;background:#0f172a;color:#fff;align-items:center;justify-content:center;flex-direction:column;text-align:center;font-size:20px;padding:24px}
+#rot span{font-size:64px;display:block;margin-bottom:12px}
+@media (orientation:portrait){#rot{display:flex}}
+</style>
+</head>
+<body>
+<div id="hud">Gonda Drive<small>लाल रोशनी = आपका घर</small></div>
+<div id="rot"><span>📱↻</span>फ़ोन को आड़ा (horizontal) कर लीजिए</div>
+<div id="fs">⛶ Fullscreen</div>
+<div id="speed">0 km/h</div>
+<div class="btn" id="l">◀</div><div class="btn" id="r">▶</div>
+<div class="btn" id="b">■</div><div class="btn" id="g">▲</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x9ecfef);
+scene.fog=new THREE.Fog(0x9ecfef,80,300);
+const cam=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,0.1,400);
+const ren=new THREE.WebGLRenderer({antialias:true});
+ren.setPixelRatio(Math.min(devicePixelRatio,2));
+ren.setSize(innerWidth,innerHeight);
+document.body.appendChild(ren.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x667766,0.75));
+const sun=new THREE.DirectionalLight(0xfff2d0,0.8);sun.position.set(80,120,40);scene.add(sun);
+
+// असली गोंडा की सड़कें (OpenStreetMap, केंद्र = आपके घर का pin)
+const TYPES=[[14,0x4a4d52,0.06],[12,0x4a4d52,0.05],[10,0x4d5055,0.045],[6,0x55585d,0.04],[6,0x55585d,0.03],[4,0x606368,0.02],[3.5,0x8d7b5a,0.01]];
+const ROADS=[[0,[2727,-2167,2827,-1815,3030,-1103,3218,-452,3274,-252,3317,-97,3435,336,3478,492,3574,846,3907,2028,4076,2650,4194,3059,4387,3725,4404,3784,4486,4067,4511,4160,4636,4621,4657,4715,4723,5021,4752,5289,4749,5837,4738,5960,4648,7108,4632,7283,4602,7790,4582,8252,4557,8369]],[2,[-5660,-6118,-5111,-6194,-4963,-6207,-4796,-6222,-4676,-6233,-4481,-6250,-4355,-6261,-4293,-6264,-4104,-6272,-3707,-6234,-3481,-6200,-3324,-6187,-3034,-6227,-2440,-6347,-2189,-6398,-1825,-6472,-1169,-6580,-414,-6723,-66,-6781,72,-6792,200,-6781,317,-6747,497,-6633,741,-6419,938,-6238,1474,-5694,1814,-5280,2217,-4806,2709,-4214,2969,-3830,3168,-3495,3243,-3370,3320,-3262,3403,-3191]],[4,[-2720,4432,-2523,4405,-2274,4359,-2142,4297,-2066,4255,-1993,4215,-1720,4106,-1566,4070,-1364,4055,-1205,4021,-610,3798,-480,3734,-364,3676,-126,3592]],[4,[-1482,2341,-1845,2937,-2292,3652,-2355,3754,-2613,4190,-2720,4432,-2750,4492,-2895,4781,-2910,4844,-3000,5220,-3045,5374,-3213,5946,-3295,6197,-3331,6254,-3361,6301,-3495,6402,-3761,6534,-4127,6685,-4176,6717,-4291,6792,-4409,6917,-4473,7019]],[4,[-1507,2277,-1482,2341,-1433,2450,-1274,2722,-1247,2744,-1178,2802,-1112,2824,-966,2828,-774,2774,-656,2743,-555,2750,-449,2756,-255,2731,119,2659,495,2553,681,2492,1049,2402,1101,2389]],[4,[-6896,4617,-6572,4568,-6415,4540,-6093,4480,-5997,4453,-5858,4415,-5720,4355,-5692,4322,-5660,4286,-5584,4118,-5531,4047,-5376,3942,-5192,3858,-4803,3634,-4710,3593,-4641,3570,-4301,3515,-3919,3412,-3856,3416,-3797,3451]],[4,[-5594,1521,-5611,1576,-5620,1683,-5592,1875,-5513,2088,-5471,2199,-5361,2411,-5352,2428,-5255,2697,-5195,2920,-5182,2962,-5164,2990,-5136,3017,-4962,3147,-4853,3275,-4776,3367,-4641,3570]],[4,[-5211,-4631,-5285,-4059,-5295,-3959,-5332,-3562,-5325,-3341,-5353,-3035,-5390,-2848,-5533,-2081,-5627,-1648,-5649,-1393,-5657,-1316,-5682,-1080,-5709,-820,-5758,-253,-5786,123,-5808,383,-5813,535,-5800,650,-5774,810,-5734,970,-5685,1162,-5610,1491,-5594,1521,-5552,1546,-5433,1554,-5249,1550,-5210,1549,-5010,1517,-4891,1464,-4625,1407,-4582,1421,-4532,1472,-4375,1802,-4299,1909,-4270,1935,-4225,1947,-4182,1945,-3958,1851,-3905,1842,-3882,1856,-3874,1872,-3842,1935,-3655,2391,-3633,2468,-3603,2638,-3586,2690,-3563,2722,-3522,2744,-3481,2801,-3333,3129]],[4,[3907,2028,3530,2013,2754,1954,2637,1949,2581,1950,2471,1954,2348,1967,2234,1997,1666,2188,1557,2227,1101,2389]],[1,[2727,-2167,2513,-1916,2128,-1437,1973,-1250,1555,-757,957,-40,891,39,869,66,728,236,441,583,387,647,291,760,35,1062,-264,1418,-435,1604,-608,1731,-889,1918,-1350,2189,-1507,2277,-1557,2305,-1722,2396,-1803,2429,-2325,2643,-2908,2899,-3067,2985,-3259,3089,-3333,3129,-3470,3202,-3654,3315,-3719,3371,-3797,3451,-3894,3548,-4103,3761,-4408,4074,-4492,4162,-4824,4513,-5006,4705,-5515,5243,-5541,5276,-5694,5472,-5721,5507,-5731,5509,-6079,5970,-6383,6476,-6436,6589,-6455,7134,-6475,7232,-6623,7314,-7241,7713,-7328,7790,-7370,7964,-7376,7999,-7425,8272,-7467,8511,-7483,8641,-7486,8664,-7556,9252,-7569,9365,-7627,9850,-7642,9957,-7709,10424,-7830,10492,-8494,10911,-9101,11241,-9150,11267,-9462,11469,-9796,11670,-10040,11793,-10196,11875,-10433,12003,-10632,12100,-10878,12226,-10951,12256]],[4,[1555,-757,896,-1539]],[4,[1948,-3007,1465,-3917]],[4,[1820,-2476,1877,-2444,1911,-2426,1926,-2427,1956,-2443,2075,-2529,2091,-2544,2114,-2551,2138,-2535,2301,-2256,2513,-1916]],[4,[1278,-1473,1577,-1709]],[4,[1248,-2109,1116,-1990,1098,-1980,1078,-1977,1052,-1986,982,-2026,960,-2024,942,-2013,513,-1692]],[4,[1584,-2787,1807,-2502,1817,-2488,1820,-2476,1822,-2465,1815,-2442,1795,-2422,1328,-1998]],[4,[2827,-1815,3118,-1877,3382,-1967,3837,-2128,4444,-2359,4869,-2444,4985,-2454,5042,-2447,5067,-2431,5079,-2410,5085,-2374,5088,-2289,5066,-1969,5044,-1662,5038,-1544,5005,-955,4994,-896,4974,-864,4930,-835,4060,-547,3274,-252]],[4,[3539,-909,3118,-1877]],[4,[3382,-1967,3819,-910]],[4,[4214,-1076,4051,-1622,4023,-1686,3919,-1892,3892,-1956,3837,-2128]],[4,[3728,-3697,4019,-3465,4203,-3290,4252,-3219,4291,-3144,4405,-2794,4422,-2718,4432,-2638,4444,-2359]],[4,[4622,-4356,4334,-3917,4019,-3465]],[4,[3574,846,4406,653,4584,612,5636,369]],[4,[3435,336,3823,297,3867,289,3936,268,4147,202,4192,188,4231,166,4251,140,4261,99,4150,-258,4060,-547]],[4,[2581,1950,2323,1286,2319,1258,2338,1240,2448,1206,2468,1191,2471,1162,2376,883,2380,841,2405,814,2437,795,2549,765,3065,622,3478,492]],[4,[-4824,4513,-4610,4833,-4574,4865,-4536,4879,-4492,4882,-4289,4875,-4012,4866,-3850,4861,-3774,4849,-3700,4817,-3507,4716,-3313,4615,-3264,4597,-3212,4587,-2750,4492]],[4,[-3212,4587,-3297,4419,-3411,4195,-3477,4065,-3489,4033,-3616,3657,-3640,3619,-3797,3451]],[4,[-4103,3761,-3882,4165,-3856,4189,-3823,4203,-3411,4195]],[4,[-4596,5319,-4678,5197,-5006,4705]],[4,[-4678,5197,-4289,4875]],[4,[-3124,4188,-3084,4276,-3082,4299,-3096,4325,-3297,4419]],[4,[-3373,4967,-3133,4849,-3078,4836,-2910,4844]],[4,[-2188,4046,-2066,4255]],[4,[-3067,2985,-2955,3122,-2914,3168,-2865,3201,-2697,3294,-2657,3321,-2531,3435,-2292,3652]],[4,[-2953,3678,-2738,3591,-2692,3567,-2531,3435]],[4,[-2898,3944,-2854,4063,-2824,4100,-2782,4129,-2613,4190]],[4,[-4853,3275,-4512,3049,-4436,3015,-4357,3000,-4273,2996,-4211,2983,-4158,2964,-3993,2897,-3563,2722]],[4,[-5361,2411,-4591,2123,-4429,2062,-4396,2060,-4363,2077,-4343,2106,-4130,2589,-3993,2897]],[4,[-4396,2698,-4591,2123]],[4,[-5383,3601,-5018,3461,-4776,3367]],[4,[-2982,2148,-2930,2242,-2915,2259,-2901,2262,-2888,2258,-2577,2058,-2374,1911,-2272,1837,-2235,1830,-2200,1837,-2168,1865,-1803,2429]],[4,[-2801,1747,-2577,2058]],[4,[-2584,1571,-2374,1911]],[4,[-3926,1635,-3851,1844]],[4,[-3882,1856,-3851,1844,-2968,1511,-2910,1487,-2831,1449,-2161,1058]],[4,[-4012,4866,-4492,4162]],[4,[-3231,5191,-3373,4967,-3507,4716]],[4,[-3259,3089,-3077,3401,-3036,3440,-2981,3460]],[4,[-4728,2835,-4396,2698,-4130,2589]],[4,[-4936,1078,-5292,1238,-5314,1262,-5325,1295,-5323,1324,-5249,1550]],[4,[-966,2828,-717,3294,-618,3478,-480,3734]],[4,[-618,3478,305,3110,361,3088,388,3086,463,3113,495,3115,577,3097,598,3099,613,3118,723,3428,771,3521,998,3881,1024,3912,1036,3921,1106,3968,1131,4000,1156,4043]],[4,[-1978,1680,-1836,1908,-1703,2121,-1667,2171,-1557,2305]],[4,[4320,-1332,5038,-1544]],[4,[4705,1079,4584,612]],[4,[4644,-383,4150,-258]],[4,[4746,-52,4261,99]],[4,[2519,-99,3218,-452]],[4,[2549,765,2390,338,2389,309,2403,291,2430,280,3317,-97]],[4,[3197,1100,3065,622]],[4,[4147,202,4324,455,4345,494,4364,536,4406,653]],[4,[869,66,1191,926,1373,1398,1396,1460,1477,1763,1517,1871,1666,2188]],[4,[248,-814,581,-282,613,-238,645,-199,685,-161,891,39]],[4,[62,-541,565,148,594,177,635,200,728,236]],[4,[-516,361,-240,552,-212,560,-172,562,-46,537,-15,535,15,542,39,559,291,760]],[5,[-528,-4926,-1169,-6580]],[5,[4657,4715,5599,4370,5832,4283,7530,3650,7802,3532,7824,3507,7822,3466,7488,2756,7362,2490,7255,2262,7061,1820,7027,1728,6911,1375]],[4,[923,1935,1477,1763]],[4,[731,1640,1244,1508,1396,1460]],[4,[387,647,549,907,579,967,729,1283]],[5,[-1481,4825,-1412,5145,-1401,5187,-1313,5426,-1298,5480,-1285,5569]],[4,[4194,3059,4406,2982,4458,2970,4800,2894,4833,2882,4900,2852,4940,2840,5200,2792]],[4,[4076,2650,4440,2644,4495,2638,4621,2602,4673,2583,5285,2263]],[6,[1818,2830,2176,3347,2548,3763,2613,3806,3096,4051,3168,4065,3263,4050,4404,3784]],[4,[773,2916,1137,2831,1159,2817,1163,2792,1049,2402]],[4,[1557,2227,1643,2533,1648,2585,1663,2977,1673,3022,1729,3193,1791,3319,1811,3350,1889,3400,1901,3428,1902,3464,1853,3586,1827,3608,1552,3746,1524,3757,1369,3781,1300,3792,1195,3820,1083,3856,1057,3874,1036,3921]],[4,[4511,4160,4736,4067,4760,4064,4781,4074,4834,4200,4846,4213,4865,4215,5087,4153,5100,4137,5096,4113,5047,4010]],[5,[4387,3725,4554,3645,4591,3629,4747,3588,4784,3573,5128,3418,5143,3400,5135,3371,5080,3264]],[4,[4355,1302,4506,1736]],[4,[-555,2750,-554,2622,-543,2590,-519,2565,-342,2458,-320,2436,-281,2378]],[5,[-1522,2919,-1247,2744]],[4,[-717,3294,-1206,3548]],[4,[-126,3592,-99,3596,-35,3658,-4,3695,71,3865,99,3902,134,3907,356,3876,677,3782,707,3782,726,3800,796,4005]],[6,[2477,4530,2770,4472,2836,4435,3168,4065]],[6,[1156,4043,1211,4190,1303,4592]],[3,[5683,1301,5638,1313,5246,1426,4834,1583,4506,1736,4146,1926,3907,2028]],[0,[7776,-9764,7716,-9673,7121,-8764,6967,-8532,6727,-8169,6554,-7908,6370,-7615,5989,-7059,5236,-5938,5013,-5608,4995,-5587,4631,-5033,4228,-4425,4028,-4133,3728,-3697,3691,-3644,3684,-3633,3403,-3191,3124,-2743,2727,-2167]],[4,[4019,-3465,3710,-2966]],[5,[3691,-3644,3440,-3922]],[5,[2217,-4806,1206,-4364]],[4,[-5682,-1080,-5495,-1139,-5345,-1197,-5047,-1333,-5031,-1349,-5026,-1368,-5046,-1472,-5046,-1500,-5037,-1520,-5013,-1533,-4663,-1698]],[4,[-4796,-6222,-4638,-5704,-4612,-5632,-4585,-5559,-4448,-5233,-4406,-5124,-4379,-5022,-4250,-4454,-4209,-4298,-4199,-4217,-4175,-4037,-4156,-3963,-4120,-3853,-3818,-3169,-3512,-2494,-3094,-1586,-2882,-1159,-2697,-785,-2634,-663,-2584,-585,-2003,283]],[4,[-4209,-4298,-4661,-4159]],[4,[-5734,970,-5571,889,-5486,827,-5411,736,-5179,400,-5122,346,-5050,287,-4733,78,-4722,72,-4712,71,-4704,77,-4698,85,-4404,829,-4401,859,-4406,879,-4418,892,-4616,1019]],[4,[-4199,-4217,-3783,-4465,-3730,-4512,-3647,-4592,-3619,-4613,-3581,-4634,-3507,-4652,-3423,-4677,-3349,-4707,-2791,-4997,-2723,-5031,-2600,-5103,-2583,-5112,-2568,-5115,-2551,-5107,-2541,-5085,-2268,-4440]],[4,[-2791,-4997,-2714,-4948,-2695,-4915,-2683,-4834,-2666,-4775,-2653,-4747,-2396,-4170]],[4,[1112,-4868,1385,-5028,1814,-5280]],[4,[2709,-4214,2138,-4197,2060,-4187,1978,-4168,1889,-4140,1465,-3917,1126,-3718,1113,-3694,1117,-3664,1129,-3634,1423,-3086,1584,-2787,1561,-2770,1096,-2369,1090,-2348,1095,-2322,1111,-2292,1248,-2109,1328,-1998,1577,-1709,1973,-1250]],[4,[4703,-3203,4869,-2444]],[4,[4028,-4133,4334,-3917,4569,-3702,4589,-3693,4606,-3692,4622,-3707,4724,-3861,4743,-3881,4769,-3890,4801,-3885,4901,-3843,4921,-3829,4936,-3801,4940,-3768,4977,-3479]],[4,[3168,-3495,2827,-3303,2711,-3258,2419,-3195,2387,-3191,2311,-3176,1948,-3007,1584,-2787]],[4,[1423,-3086,1059,-2906,1033,-2908,1018,-2916,998,-2938,871,-3199]],[4,[469,3569,305,3110]]];
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(4000,4000),new THREE.MeshLambertMaterial({color:0x9a9578}));
+ground.rotation.x=-Math.PI/2;scene.add(ground);
+const segs=[];let bx0=1e9,bx1=-1e9,bz0=1e9,bz1=-1e9;
+TYPES.forEach(([w,col,y],ti)=>{
+  const pos=[],nor=[];
+  ROADS.filter(r=>r[0]===ti).forEach(r=>{
+    const p=r[1];
+    for(let i=0;i+3<p.length;i+=2){
+      const x1=p[i]/10,z1=p[i+1]/10,x2=p[i+2]/10,z2=p[i+3]/10;
+      const dx=x2-x1,dz=z2-z1,L=Math.hypot(dx,dz);if(L<0.01)continue;
+      const nx=-dz/L*w/2,nz=dx/L*w/2;
+      pos.push(x1+nx,y,z1+nz,x1-nx,y,z1-nz,x2+nx,y,z2+nz,x2+nx,y,z2+nz,x1-nx,y,z1-nz,x2-nx,y,z2-nz);
+      for(let k=0;k<6;k++)nor.push(0,1,0);
+      segs.push([x1,z1,x2,z2,w/2]);
+      bx0=Math.min(bx0,x1,x2);bx1=Math.max(bx1,x1,x2);bz0=Math.min(bz0,z1,z2);bz1=Math.max(bz1,z1,z2);
+    }
+  });
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
+  scene.add(new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:col,side:THREE.DoubleSide})));
+});
+function segDist(px,pz,s){
+  const dx=s[2]-s[0],dz=s[3]-s[1],L2=dx*dx+dz*dz;
+  let t=L2?((px-s[0])*dx+(pz-s[1])*dz)/L2:0;t=Math.max(0,Math.min(1,t));
+  return Math.hypot(px-(s[0]+t*dx),pz-(s[1]+t*dz))-s[4];
+}
+function roadClear(px,pz){let m=1e9;for(const s of segs){const d=segDist(px,pz,s);if(d<m)m=d}return m}
+
+// अस्थायी इमारतें (OpenStreetMap में यहाँ इमारतें दर्ज नहीं हैं)
+const boxes=[];
+const pastel=[0xf4d6a0,0xe8b4a0,0xcfe3c0,0xb7d3e8,0xf2e2c4,0xd9c2e0,0xe9c46a,0xf1a7a7];
+let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
+const cand=[];
+for(const s of segs){
+  const dx=s[2]-s[0],dz=s[3]-s[1],L=Math.hypot(dx,dz);
+  const ux=dx/L,uz=dz/L;
+  for(let d=8;d<L;d+=16)for(const side of [-1,1]){
+    const off=s[4]+7;
+    cand.push([s[0]+ux*d-uz*off*side,s[1]+uz*d+ux*off*side]);
+  }
+}
+for(const c of cand){
+  if(boxes.length>=900)break;
+  const sz=7+rnd()*6;
+  if(Math.hypot(c[0],c[1])<10)continue;
+  if(roadClear(c[0],c[1])<sz*0.75+1.5)continue;
+  let ok=true;
+  for(const b of boxes){if(Math.abs(c[0]-b.x)<b.hw+sz/2+1.5&&Math.abs(c[1]-b.z)<b.hw+sz/2+1.5){ok=false;break}}
+  if(ok)boxes.push({x:c[0],z:c[1],hw:sz/2,h:3.2*(1+Math.floor(rnd()*4))});
+}
+const bgeo=new THREE.BoxGeometry(1,1,1);bgeo.translate(0,0.5,0);
+const inst=new THREE.InstancedMesh(bgeo,new THREE.MeshLambertMaterial({color:0xffffff}),Math.max(1,boxes.length));
+const mt=new THREE.Matrix4(),col=new THREE.Color();
+boxes.forEach((b,i)=>{
+  mt.makeScale(b.hw*2,b.h,b.hw*2);mt.setPosition(b.x,0,b.z);
+  inst.setMatrixAt(i,mt);inst.setColorAt(i,col.setHex(pastel[Math.floor(rnd()*pastel.length)]));
+});
+inst.instanceMatrix.needsUpdate=true;if(inst.instanceColor)inst.instanceColor.needsUpdate=true;
+scene.add(inst);
+// आपके घर की लाल रोशनी
+const beam=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,60,12),new THREE.MeshBasicMaterial({color:0xff2233,transparent:true,opacity:0.55}));
+beam.position.set(0,30,0);scene.add(beam);
+
+// कार
+const car=new THREE.Group();
+const body=new THREE.Mesh(new THREE.BoxGeometry(1.9,0.7,4.1),new THREE.MeshLambertMaterial({color:0xc62828}));body.position.y=0.65;car.add(body);
+const cab=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.6,2.0),new THREE.MeshLambertMaterial({color:0x9fc9e8}));cab.position.set(0,1.28,-0.2);car.add(cab);
+const wm=new THREE.MeshLambertMaterial({color:0x111111});
+[[-1,1.3],[1,1.3],[-1,-1.3],[1,-1.3]].forEach(p=>{
+  const w=new THREE.Mesh(new THREE.CylinderGeometry(0.38,0.38,0.3,14),wm);
+  w.rotation.z=Math.PI/2;w.position.set(p[0]*0.95,0.38,p[1]);car.add(w);
+});
+scene.add(car);
+const st={x:0,z:0,h:0,v:0};
+(function(){let best=1e9;for(const q of segs){
+  const dx=q[2]-q[0],dz=q[3]-q[1],L2=dx*dx+dz*dz;let t=L2?((0-q[0])*dx+(0-q[1])*dz)/L2:0;t=Math.max(0,Math.min(1,t));
+  const px=q[0]+t*dx,pz=q[1]+t*dz,d=Math.hypot(px,pz);
+  if(d<best){best=d;st.x=px;st.z=pz;st.h=Math.atan2(dx,dz)}}})();
+
+// कंट्रोल
+const k={l:0,r:0,g:0,b:0};
+const map={ArrowLeft:'l',a:'l',ArrowRight:'r',d:'r',ArrowUp:'g',w:'g',ArrowDown:'b',s:'b',' ':'b'};
+addEventListener('keydown',e=>{const m=map[e.key];if(m){k[m]=1;e.preventDefault()}});
+addEventListener('keyup',e=>{const m=map[e.key];if(m)k[m]=0});
+[['l','l'],['r','r'],['g','g'],['b','b']].forEach(([id,key])=>{
+  const el=document.getElementById(id);
+  const on=e=>{k[key]=1;el.classList.add('on');e.preventDefault()};
+  const off=e=>{k[key]=0;el.classList.remove('on');e.preventDefault()};
+  el.addEventListener('touchstart',on,{passive:false});
+  el.addEventListener('touchend',off,{passive:false});
+  el.addEventListener('touchcancel',off,{passive:false});
+  el.addEventListener('mousedown',on);el.addEventListener('mouseup',off);el.addEventListener('mouseleave',off);
+});
+
+// फुलस्क्रीन + लैंडस्केप
+document.getElementById('fs').addEventListener('click',async()=>{
+  try{
+    const d=document.documentElement;
+    if(!document.fullscreenElement&&d.requestFullscreen)await d.requestFullscreen();
+    if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('landscape');
+  }catch(e){}
+});
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+// गेम लूप
+const spd=document.getElementById('speed');
+let last=performance.now();
+function loop(t){
+  requestAnimationFrame(loop);
+  const dt=Math.min((t-last)/1000,0.05);last=t;
+  let acc=0;
+  if(k.g)acc=16;
+  if(k.b)acc=st.v>0.5?-32:-10;
+  st.v+=acc*dt;
+  st.v-=st.v*0.6*dt;
+  st.v=Math.max(-8,Math.min(30,st.v));
+  const steer=(k.l-k.r);
+  st.h+=steer*dt*1.7*Math.max(-1,Math.min(1,st.v/9));
+  st.x+=Math.sin(st.h)*st.v*dt;
+  st.z+=Math.cos(st.h)*st.v*dt;
+  // टक्कर
+  for(const b of boxes){
+    const dx=st.x-b.x,dz=st.z-b.z,R=1.5;
+    const px=Math.max(-b.hw,Math.min(b.hw,dx)),pz=Math.max(-b.hw,Math.min(b.hw,dz));
+    const ox=dx-px,oz=dz-pz,d=Math.hypot(ox,oz);
+    if(d<R){
+      if(d>0.0001){st.x+=ox/d*(R-d);st.z+=oz/d*(R-d)}
+      else st.x+=R;
+      st.v*=0.4;
+    }
+  }
+  st.x=Math.max(bx0-30,Math.min(bx1+30,st.x));st.z=Math.max(bz0-30,Math.min(bz1+30,st.z));
+  car.position.set(st.x,0,st.z);car.rotation.y=st.h;
+  const tx=st.x-Math.sin(st.h)*9,tz=st.z-Math.cos(st.h)*9;
+  cam.position.x+=(tx-cam.position.x)*Math.min(1,dt*5);
+  cam.position.z+=(tz-cam.position.z)*Math.min(1,dt*5);
+  cam.position.y=4.8;
+  cam.lookAt(st.x+Math.sin(st.h)*4,1.2,st.z+Math.cos(st.h)*4);
+  spd.textContent=Math.round(Math.abs(st.v)*3.6)+' km/h';
+  ren.render(scene,cam);
+}
+cam.position.set(st.x-Math.sin(st.h)*9,4.8,st.z-Math.cos(st.h)*9);
+requestAnimationFrame(loop);
+addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight)});
+</script>
+</body>
+</html>
