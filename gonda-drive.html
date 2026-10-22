@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<title>Gonda Drive</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<style>
+:root{--bg:#0f172a;--fg:#fff}
+@media (prefers-color-scheme: dark){:root{--bg:#0f172a;--fg:#fff}}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{display:block;width:100%;height:100%}
+#hud{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;font-weight:700;text-shadow:0 1px 4px #000}
+#hud small{display:block;font-weight:400;opacity:.8}
+#speed{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);right:14px;font-size:28px;font-weight:800;text-shadow:0 1px 4px #000}
+.btn{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);width:76px;height:76px;border-radius:50%;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff}
+.btn.on{background:rgba(255,255,255,.5)}
+#l{left:16px}#r{left:106px}#g{right:16px;background:rgba(34,197,94,.35)}#b{right:106px;background:rgba(239,68,68,.35)}
+</style>
+</head>
+<body>
+<div id="hud">Gonda Drive<small>Step 1: ड्राइविंग टेस्ट · तीर/WASD या स्क्रीन बटन</small></div>
+<div id="speed">0 km/h</div>
+<div class="btn" id="l">◀</div><div class="btn" id="r">▶</div>
+<div class="btn" id="b">■</div><div class="btn" id="g">▲</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x9ecfef);
+scene.fog=new THREE.Fog(0x9ecfef,60,230);
+const cam=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,0.1,400);
+const ren=new THREE.WebGLRenderer({antialias:true});
+ren.setPixelRatio(Math.min(devicePixelRatio,2));
+ren.setSize(innerWidth,innerHeight);
+document.body.appendChild(ren.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x667766,0.75));
+const sun=new THREE.DirectionalLight(0xfff2d0,0.8);sun.position.set(80,120,40);scene.add(sun);
+
+// सड़कें और ब्लॉक
+const S=40,N=3,ROAD=10;
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(600,600),new THREE.MeshLambertMaterial({color:0x3b3f45}));
+ground.rotation.x=-Math.PI/2;scene.add(ground);
+const lineMat=new THREE.MeshBasicMaterial({color:0xf2f2f2});
+for(let i=-N;i<=N;i++){
+  const a=new THREE.Mesh(new THREE.PlaneGeometry(0.3,S*2*N+ROAD),lineMat);
+  a.rotation.x=-Math.PI/2;a.position.set(i*S,0.03,0);scene.add(a);
+  const b=new THREE.Mesh(new THREE.PlaneGeometry(S*2*N+ROAD,0.3),lineMat);
+  b.rotation.x=-Math.PI/2;b.position.set(0,0.03,i*S);scene.add(b);
+}
+const boxes=[];
+const pastel=[0xf4d6a0,0xe8b4a0,0xcfe3c0,0xb7d3e8,0xf2e2c4,0xd9c2e0,0xe9c46a,0xf1a7a7];
+let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
+for(let i=-N;i<N;i++)for(let j=-N;j<N;j++){
+  const cx=i*S+S/2,cz=j*S+S/2,W=S-ROAD;
+  const pad=new THREE.Mesh(new THREE.PlaneGeometry(W,W),new THREE.MeshLambertMaterial({color:0x9aa08e}));
+  pad.rotation.x=-Math.PI/2;pad.position.set(cx,0.02,cz);scene.add(pad);
+  for(let a=0;a<2;a++)for(let b=0;b<2;b++){
+    const w=W/2-2,h=4+rnd()*10;
+    const x=cx+(a?1:-1)*(W/4),z=cz+(b?1:-1)*(W/4);
+    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,w),new THREE.MeshLambertMaterial({color:pastel[Math.floor(rnd()*pastel.length)]}));
+    m.position.set(x,h/2,z);scene.add(m);
+    boxes.push({x,z,hw:w/2});
+  }
+}
+
+// कार
+const car=new THREE.Group();
+const body=new THREE.Mesh(new THREE.BoxGeometry(1.9,0.7,4.1),new THREE.MeshLambertMaterial({color:0xc62828}));body.position.y=0.65;car.add(body);
+const cab=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.6,2.0),new THREE.MeshLambertMaterial({color:0x9fc9e8}));cab.position.set(0,1.28,-0.2);car.add(cab);
+const wm=new THREE.MeshLambertMaterial({color:0x111111});
+[[-1,1.3],[1,1.3],[-1,-1.3],[1,-1.3]].forEach(p=>{
+  const w=new THREE.Mesh(new THREE.CylinderGeometry(0.38,0.38,0.3,14),wm);
+  w.rotation.z=Math.PI/2;w.position.set(p[0]*0.95,0.38,p[1]);car.add(w);
+});
+scene.add(car);
+const st={x:0,z:-S/2*0-14,h:0,v:0};
+st.x=0;st.z=-12;
+
+// कंट्रोल
+const k={l:0,r:0,g:0,b:0};
+const map={ArrowLeft:'l',a:'l',ArrowRight:'r',d:'r',ArrowUp:'g',w:'g',ArrowDown:'b',s:'b',' ':'b'};
+addEventListener('keydown',e=>{const m=map[e.key];if(m){k[m]=1;e.preventDefault()}});
+addEventListener('keyup',e=>{const m=map[e.key];if(m)k[m]=0});
+[['l','l'],['r','r'],['g','g'],['b','b']].forEach(([id,key])=>{
+  const el=document.getElementById(id);
+  const on=e=>{k[key]=1;el.classList.add('on');e.preventDefault()};
+  const off=e=>{k[key]=0;el.classList.remove('on');e.preventDefault()};
+  el.addEventListener('touchstart',on,{passive:false});
+  el.addEventListener('touchend',off,{passive:false});
+  el.addEventListener('touchcancel',off,{passive:false});
+  el.addEventListener('mousedown',on);el.addEventListener('mouseup',off);el.addEventListener('mouseleave',off);
+});
+
+// गेम लूप
+const spd=document.getElementById('speed');
+let last=performance.now();
+function loop(t){
+  requestAnimationFrame(loop);
+  const dt=Math.min((t-last)/1000,0.05);last=t;
+  let acc=0;
+  if(k.g)acc=16;
+  if(k.b)acc=st.v>0.5?-32:-10;
+  st.v+=acc*dt;
+  st.v-=st.v*0.6*dt;
+  st.v=Math.max(-8,Math.min(30,st.v));
+  const steer=(k.l-k.r);
+  st.h+=steer*dt*1.7*Math.max(-1,Math.min(1,st.v/9));
+  st.x+=Math.sin(st.h)*st.v*dt;
+  st.z+=Math.cos(st.h)*st.v*dt;
+  // टक्कर
+  for(const b of boxes){
+    const dx=st.x-b.x,dz=st.z-b.z,R=1.5;
+    const px=Math.max(-b.hw,Math.min(b.hw,dx)),pz=Math.max(-b.hw,Math.min(b.hw,dz));
+    const ox=dx-px,oz=dz-pz,d=Math.hypot(ox,oz);
+    if(d<R){
+      if(d>0.0001){st.x+=ox/d*(R-d);st.z+=oz/d*(R-d)}
+      else st.x+=R;
+      st.v*=0.4;
+    }
+  }
+  const lim=S*N+ROAD/2;
+  st.x=Math.max(-lim,Math.min(lim,st.x));st.z=Math.max(-lim,Math.min(lim,st.z));
+  car.position.set(st.x,0,st.z);car.rotation.y=st.h;
+  const tx=st.x-Math.sin(st.h)*9,tz=st.z-Math.cos(st.h)*9;
+  cam.position.x+=(tx-cam.position.x)*Math.min(1,dt*5);
+  cam.position.z+=(tz-cam.position.z)*Math.min(1,dt*5);
+  cam.position.y=4.8;
+  cam.lookAt(st.x+Math.sin(st.h)*4,1.2,st.z+Math.cos(st.h)*4);
+  spd.textContent=Math.round(Math.abs(st.v)*3.6)+' km/h';
+  ren.render(scene,cam);
+}
+cam.position.set(0,4.8,-21);
+requestAnimationFrame(loop);
+addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight)});
+</script>
+</body>
+</html>
